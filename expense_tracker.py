@@ -26,6 +26,7 @@ from reportlab.pdfgen import canvas
 
 DEFAULT_STORAGE = "expenses.json"
 DATE_FORMAT = "%Y-%m-%d"
+VERSION = "1.0.0"
 
 
 class ExpenseTrackerError(Exception):
@@ -235,6 +236,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--storage",
         default=DEFAULT_STORAGE,
         help=f"Local JSON storage file path (default: {DEFAULT_STORAGE})",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {VERSION}",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 

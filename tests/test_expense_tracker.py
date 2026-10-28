@@ -17,9 +17,11 @@ from expense_tracker import (
     export_csv,
     export_pdf,
     grand_total,
+    list_expenses,
     load_expenses,
     parse_amount,
     parse_date,
+    save_expenses,
     totals_by_category,
 )
 
@@ -154,3 +156,113 @@ def test_export_pdf_dry_run_does_not_write(tmp_path):
     output = os.path.join(tmp_path, "summary.pdf")
     export_pdf(expenses, output, dry_run=True)
     assert not os.path.exists(output)
+
+
+def test_parse_date_edge_cases():
+    # Leap year
+    assert parse_date("2024-02-29") == date(2024, 2, 29)
+    # End of month
+    assert parse_date("2026-01-31") == date(2026, 1, 31)
+
+
+def test_parse_date_rejects_future_and_edge():
+    # Month 00 is invalid
+    with pytest.raises(ExpenseTrackerError):
+        parse_date("2026-00-01")
+    # Day 00 is invalid
+    with pytest.raises(ExpenseTrackerError):
+        parse_date("2026-01-00")
+    # Non-date string
+    with pytest.raises(ExpenseTrackerError):
+        parse_date("october 28 2026")
+
+
+def test_parse_amount_edge_cases():
+    # Very small positive amount
+    assert parse_amount("0.0001") == 0.0
+    # Large amount
+    assert parse_amount("999999.99") == 999999.99
+    # Whitespace-padded number still parses
+    assert parse_amount("  12.50  ") == 12.50
+
+
+def test_totals_case_sensitive_categories():
+    expenses = [
+        {
+            "amount": 10.00,
+            "category": "Office",
+            "date": "2026-10-01",
+            "description": "a",
+        },
+        {
+            "amount": 5.00,
+            "category": "office",
+            "date": "2026-10-02",
+            "description": "b",
+        },
+    ]
+    totals = totals_by_category(expenses)
+    assert totals == {"Office": 10.00, "office": 5.00}
+
+
+def test_totals_with_special_characters():
+    expenses = [
+        {
+            "amount": 7.50,
+            "category": "Café & Bakery",
+            "date": "2026-10-01",
+            "description": "Croissant",
+        },
+        {
+            "amount": 3.25,
+            "category": "Café & Bakery",
+            "date": "2026-10-02",
+            "description": "Coffee",
+        },
+    ]
+    totals = totals_by_category(expenses)
+    assert totals == {"Café & Bakery": 10.75}
+
+
+def test_list_expenses_output(capsys):
+    expenses = sample_expenses()
+    list_expenses(expenses)
+    captured = capsys.readouterr()
+    assert "Office" in captured.out
+    assert "Software" in captured.out
+    assert "Pens" in captured.out
+    assert "Sticky notes" in captured.out
+
+
+def test_list_expenses_empty(capsys):
+    list_expenses([])
+    captured = capsys.readouterr()
+    assert "No expenses recorded yet." in captured.out
+
+
+def test_save_and_load_roundtrip(tmp_path):
+    storage = os.path.join(tmp_path, "roundtrip.json")
+    expenses = sample_expenses()
+    save_expenses(storage, expenses)
+    loaded = load_expenses(storage)
+    assert len(loaded) == 3
+    assert loaded[0]["category"] == "Office"
+    assert loaded[2]["description"] == "Sticky notes"
+
+
+def test_add_expense_with_unicode(tmp_path):
+    storage = os.path.join(tmp_path, "unicode.json")
+    expenses: list[dict] = []
+    entry = add_expense(
+        expenses,
+        15.00,
+        "Café",
+        date(2026, 10, 5),
+        "Croissant & café au lait ☕",
+        storage,
+        dry_run=False,
+    )
+    assert entry["category"] == "Café"
+    assert entry["description"] == "Croissant & café au lait ☕"
+    saved = load_expenses(storage)
+    assert saved[0]["description"] == "Croissant & café au lait ☕"
